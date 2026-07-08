@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>לוח תסריט | Script Log</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #1c1b19;
+    --panel: #262421;
+    --panel-2: #2f2c28;
+    --line: #3c3833;
+    --tungsten: #e8862e;
+    --tungsten-dim: #b8641d;
+    --good: #6b9b5e;
+    --good-dim: #4c7541;
+    --ng: #c1503f;
+    --ng-dim: #953a2d;
+    --star: #d9b45c;
+    --text: #f0ebe1;
+    --text-dim: #a39c8f;
+    --text-faint: #6f6a61;
+    --mono: "SF Mono", "Consolas", "Menlo", monospace;
+    --sans: "Rubik", -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body{
+    margin:0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-weight: 400;
+    min-height:100vh;
+    padding: 20px 14px 60px;
+  }
+  .wrap{ max-width: 640px; margin: 0 auto; }
+
+  /* ---- Header ---- */
+  .top{
+    display:flex; align-items:baseline; justify-content:space-between;
+    margin-bottom: 18px; padding: 0 4px;
+  }
+  .top h1{
+    font-size: 19px; font-weight: 700; margin:0; letter-spacing: .2px;
+  }
+  .top .day{
+    font-family: var(--mono); font-size: 12px; color: var(--text-faint);
+  }
+
+  /* ---- Slate ---- */
+  .slate{
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 16px;
+  }
+  .slate-stripes{
+    height: 16px;
+    background: repeating-linear-gradient(
+      -45deg,
+      #efe9dd 0 22px,
+      #1f1e1c 22px 44px
+    );
+    border-bottom: 1px solid var(--line);
+  }
+  .slate-body{
+    padding: 18px 16px 16px;
+  }
+  .tc-row{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    background: #14130f;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 10px 14px;
+    margin-bottom: 14px;
+  }
+  .tc-row .tc-left{ display:flex; align-items:center; gap:8px; }
+  .tc-dot{
+    width:7px; height:7px; border-radius:50%;
+    background: var(--ng);
+    animation: blink 1s steps(1) infinite;
+  }
+  @keyframes blink{ 50%{ opacity:.2; } }
+  .tc-label{ font-size: 10px; color: var(--text-faint); letter-spacing:.5px; }
+  .tc-display{
+    font-family: var(--mono);
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--tungsten);
+    letter-spacing: 1px;
+    direction: ltr;
+  }
+  .tc-frames{ color: var(--text-faint); font-size: 17px; }
+  .fps-select{
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    color: var(--text-dim);
+    font-family: var(--mono);
+    font-size: 12px;
+    border-radius: 6px;
+    padding: 5px 6px;
+  }
+  .fields{
+    display:grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+  @media (max-width: 400px){
+    .fields{ grid-template-columns: repeat(2, 1fr); }
+  }
+  .field label{
+    display:block;
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-bottom: 6px;
+    text-align:center;
+    letter-spacing:.3px;
+  }
+  .stepper{
+    display:flex; align-items:center; justify-content:space-between;
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 5px 2px;
+  }
+  .stepper button{
+    width: 24px; height: 32px;
+    background: transparent;
+    border: none;
+    color: var(--text-dim);
+    font-size: 16px;
+    cursor: pointer;
+    border-radius: 6px;
+    line-height:1;
+    flex-shrink:0;
+  }
+  .stepper button:active{ background: var(--line); color: var(--text); }
+  .stepper input{
+    width: 100%;
+    min-width: 0;
+    text-align:center;
+    background: transparent;
+    border: none;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 22px;
+    font-weight: 700;
+    -moz-appearance: textfield;
+  }
+  .stepper input::-webkit-outer-spin-button,
+  .stepper input::-webkit-inner-spin-button{ -webkit-appearance:none; margin:0; }
+  .stepper input:focus{ outline: none; }
+
+  .notes-row{ margin-bottom: 14px; }
+  .scene-desc-row{ margin-bottom: 10px; }
+  .scene-desc-row input{
+    width:100%;
+    background: rgba(232,134,46,0.06);
+    border: 1px solid var(--tungsten-dim);
+    border-radius: 8px;
+    padding: 9px 12px;
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 13px;
+  }
+  .scene-desc-row input::placeholder{ color: var(--text-faint); }
+  .scene-desc-row input:focus{ outline: 1px solid var(--tungsten); }
+  .notes-row input{
+    width:100%;
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 10px 12px;
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 14px;
+  }
+  .notes-row input::placeholder{ color: var(--text-faint); }
+  .notes-row input:focus{ outline: 1px solid var(--tungsten-dim); }
+
+  .flags{
+    display:flex; gap:8px; margin-bottom: 14px;
+  }
+  .flag-btn{
+    flex:1;
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 8px 4px;
+    color: var(--text-dim);
+    font-size: 12px;
+    cursor:pointer;
+  }
+  .flag-btn.on{
+    color: var(--star);
+    border-color: var(--star);
+    background: rgba(217,180,92,0.1);
+  }
+
+  .actions{
+    display:grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .actions button{
+    padding: 16px 8px;
+    border-radius: 9px;
+    border: none;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: .3px;
+    color: #14130f;
+  }
+  .btn-good{ background: var(--good); }
+  .btn-good:active{ background: var(--good-dim); }
+  .btn-ng{ background: var(--ng); color:#fdf1ee; }
+  .btn-ng:active{ background: var(--ng-dim); }
+
+  /* ---- Log ---- */
+  .log-head{
+    display:flex; align-items:center; justify-content:space-between;
+    margin: 22px 4px 10px;
+  }
+  .log-head h2{
+    font-size: 13px; text-transform: uppercase; letter-spacing: 1px;
+    color: var(--text-dim); margin:0; font-weight:700;
+  }
+  .log-tools{ display:flex; gap:8px; }
+  .icon-btn{
+    background: var(--panel);
+    border: 1px solid var(--line);
+    color: var(--text-dim);
+    border-radius: 7px;
+    padding: 6px 10px;
+    font-size: 12px;
+    cursor:pointer;
+  }
+  .icon-btn:hover{ color: var(--text); border-color: var(--tungsten-dim); }
+
+  .search{
+    margin: 0 4px 12px;
+  }
+  .search input{
+    width:100%;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 9px 12px;
+    color: var(--text);
+    font-size: 13px;
+  }
+  .search input::placeholder{ color: var(--text-faint); }
+
+  .scene-group{ margin-bottom: 14px; }
+  .scene-label{
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--tungsten);
+    padding: 4px 8px;
+    margin-bottom: 6px;
+  }
+  .entry{
+    display:flex;
+    align-items:center;
+    gap: 10px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    padding: 10px 12px;
+    margin-bottom: 6px;
+  }
+  .entry .badge{
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text);
+    background: var(--panel-2);
+    border-radius: 6px;
+    padding: 4px 8px;
+    min-width: 44px;
+    text-align:center;
+  }
+  .entry .status-dot{
+    width: 10px; height:10px; border-radius: 50%;
+    flex-shrink:0;
+  }
+  .status-dot.good{ background: var(--good); }
+  .status-dot.ng{ background: var(--ng); }
+  .entry .info{ flex:1; min-width:0; }
+  .entry .info .title{
+    font-size: 14.5px; font-weight: 600; color: var(--text);
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .entry .info .title .status-word{ font-weight:700; }
+  .entry .info .title .status-word.good{ color: var(--good); background:none; width:auto; height:auto; }
+  .entry .info .title .status-word.ng{ color: var(--ng); background:none; width:auto; height:auto; }
+  .entry .info .note{
+    font-size: 13px; color: var(--text-dim);
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    margin-top: 2px;
+  }
+  .entry .info .meta{
+    font-size: 11px; color: var(--text-faint);
+    font-family: var(--mono);
+    margin-top:3px;
+  }
+  .entry .star{ color: var(--star); font-size: 13px; }
+  .entry .del{
+    background: none; border:none; color: var(--text-faint);
+    font-size: 16px; cursor:pointer; padding: 4px 6px;
+  }
+  .entry .del:hover{ color: var(--ng); }
+
+  .empty{
+    text-align:center;
+    color: var(--text-faint);
+    font-size: 13px;
+    padding: 30px 10px;
+    border: 1px dashed var(--line);
+    border-radius: 10px;
+  }
+
+  .toast{
+    position: fixed;
+    bottom: 20px; left: 50%; transform: translateX(-50%);
+    background: var(--panel-2);
+    border: 1px solid var(--tungsten-dim);
+    color: var(--text);
+    padding: 9px 16px;
+    border-radius: 20px;
+    font-size: 13px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .25s ease, transform .25s ease;
+  }
+  .toast.show{ opacity: 1; transform: translateX(-50%) translateY(-4px); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="top">
+    <h1>לוח תסריט</h1>
+    <span class="day" id="dayLabel"></span>
+  </div>
+
+  <div class="slate">
+    <div class="slate-stripes"></div>
+    <div class="slate-body">
+      <div class="tc-row">
+        <div class="tc-left">
+          <span class="tc-dot"></span>
+          <span class="tc-label">TC — ישראל</span>
+        </div>
+        <div class="tc-display" id="tcDisplay">--:--:--<span class="tc-frames">:--</span></div>
+        <select class="fps-select" id="fpsSelect" onchange="onFpsChange()">
+          <option value="25">25fps</option>
+          <option value="24">24fps</option>
+          <option value="23.976">23.98fps</option>
+          <option value="30">30fps</option>
+          <option value="29.97">29.97fps</option>
+          <option value="50">50fps</option>
+        </select>
+      </div>
+      <div class="fields">
+        <div class="field">
+          <label>סצנה</label>
+          <div class="stepper">
+            <button onclick="step('scene',1)">+</button>
+            <input id="scene" type="number" value="1" min="1" onchange="onFieldChange()">
+            <button onclick="step('scene',-1)">−</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>שוט</label>
+          <div class="stepper">
+            <button onclick="step('shot',1)">+</button>
+            <input id="shot" type="number" value="1" min="1" onchange="onFieldChange()">
+            <button onclick="step('shot',-1)">−</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>טייק</label>
+          <div class="stepper">
+            <button onclick="step('take',1)">+</button>
+            <input id="take" type="number" value="1" min="1" onchange="onFieldChange()">
+            <button onclick="step('take',-1)">−</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>עמדה</label>
+          <div class="stepper">
+            <button onclick="step('position',1)">+</button>
+            <input id="position" type="text" value="A" maxlength="1" onchange="onFieldChange()">
+            <button onclick="step('position',-1)">−</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="scene-desc-row">
+        <input id="sceneDesc" type="text" placeholder="על מה הסצנה? (נשמר לפי מספר סצנה)" onchange="onSceneDescChange()">
+      </div>
+
+      <div class="notes-row">
+        <input id="notes" type="text" placeholder="הערה לטייק (רשות)…">
+      </div>
+
+      <div class="flags">
+        <button class="flag-btn" id="flagCircle" onclick="toggleFlag('circle')">★ טייק מצוין מאוד</button>
+      </div>
+
+      <div class="actions">
+        <button class="btn-good" onclick="logTake('good')">GOOD ✓</button>
+        <button class="btn-ng" onclick="logTake('ng')">NG ✕</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="log-head">
+    <h2>יומן צילום</h2>
+    <div class="log-tools">
+      <button class="icon-btn" onclick="exportCSV()">ייצוא CSV</button>
+      <button class="icon-btn" onclick="clearAll()">איפוס</button>
+    </div>
+  </div>
+
+  <div class="search">
+    <input id="search" type="text" placeholder="חיפוש לפי סצנה, שוט או הערה…" oninput="render()">
+  </div>
+
+  <div id="log"></div>
+
+  <div class="toast" id="toast"></div>
+</div>
+
+<script>
+let entries = [];
+let state = { scene: 1, shot: 1, take: 1, position: 'A' };
+let flags = { circle: false };
+let fps = 25;
+let lastTC = '00:00:00:00';
+let sceneDescriptions = {};
+
+const dayLabel = document.getElementById('dayLabel');
+dayLabel.textContent = new Date().toLocaleDateString('he-IL', { day:'2-digit', month:'2-digit', year:'numeric' });
+
+async function loadData(){
+  try{
+    const res = await window.storage.get('script-log-entries', false);
+    entries = res ? JSON.parse(res.value) : [];
+  }catch(e){ entries = []; }
+  try{
+    const res2 = await window.storage.get('script-log-state', false);
+    if(res2){ state = JSON.parse(res2.value); }
+  }catch(e){}
+  try{
+    const res3 = await window.storage.get('script-log-fps', false);
+    if(res3){ fps = parseFloat(res3.value); }
+  }catch(e){}
+  try{
+    const res4 = await window.storage.get('script-log-scene-desc', false);
+    if(res4){ sceneDescriptions = JSON.parse(res4.value); }
+  }catch(e){}
+  document.getElementById('fpsSelect').value = String(fps);
+  applyState();
+  render();
+  startClock();
+}
+
+async function onFpsChange(){
+  fps = parseFloat(document.getElementById('fpsSelect').value);
+  try{ await window.storage.set('script-log-fps', String(fps), false); }
+  catch(e){}
+}
+
+function pad(n, len){
+  len = len || 2;
+  return String(Math.floor(n)).padStart(len, '0');
+}
+
+function currentTimecode(){
+  // Wall-clock time in Israel, regardless of the device's own timezone
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Jerusalem',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: false
+  }).formatToParts(new Date());
+  const get = t => parts.find(p => p.type === t).value;
+  const h = get('hour'), m = get('minute'), s = get('second');
+  const ms = new Date().getMilliseconds();
+  const frame = pad(Math.floor((ms / 1000) * fps), 2);
+  return `${h}:${m}:${s}:${frame}`;
+}
+
+function startClock(){
+  const tick = () => {
+    lastTC = currentTimecode();
+    const el = document.getElementById('tcDisplay');
+    const main = lastTC.slice(0, 8);
+    const fr = lastTC.slice(8);
+    el.innerHTML = `${main}<span class="tc-frames">${fr}</span>`;
+  };
+  tick();
+  setInterval(tick, 40);
+}
+
+function applyState(){
+  document.getElementById('scene').value = state.scene;
+  document.getElementById('shot').value = state.shot;
+  document.getElementById('take').value = state.take;
+  document.getElementById('position').value = state.position || 'A';
+  document.getElementById('sceneDesc').value = sceneDescriptions[state.scene] || '';
+}
+
+async function onSceneDescChange(){
+  const val = document.getElementById('sceneDesc').value.trim();
+  sceneDescriptions[state.scene] = val;
+  try{ await window.storage.set('script-log-scene-desc', JSON.stringify(sceneDescriptions), false); }
+  catch(e){}
+  render();
+}
+
+async function saveEntries(){
+  try{ await window.storage.set('script-log-entries', JSON.stringify(entries), false); }
+  catch(e){ showToast('שגיאה בשמירה'); }
+}
+async function saveState(){
+  try{ await window.storage.set('script-log-state', JSON.stringify(state), false); }
+  catch(e){}
+}
+
+function nextLetter(letter, delta){
+  let code = letter.toUpperCase().charCodeAt(0) - 65;
+  if(isNaN(code) || code < 0 || code > 25) code = 0;
+  code = (code + delta + 26) % 26;
+  return String.fromCharCode(65 + code);
+}
+
+function step(field, delta){
+  const el = document.getElementById(field);
+  if(field === 'position'){
+    const cur = (el.value || 'A').toUpperCase().slice(0,1);
+    el.value = nextLetter(cur, delta);
+  } else {
+    let v = parseInt(el.value || '1', 10) + delta;
+    if(v < 1) v = 1;
+    el.value = v;
+  }
+  onFieldChange();
+}
+
+function onFieldChange(){
+  const newScene = parseInt(document.getElementById('scene').value || '1', 10);
+  const newShot = parseInt(document.getElementById('shot').value || '1', 10);
+  if(newScene !== state.scene || newShot !== state.shot){
+    state.take = 1;
+    document.getElementById('take').value = 1;
+  }
+  const sceneChanged = newScene !== state.scene;
+  state.scene = newScene;
+  state.shot = newShot;
+  state.take = parseInt(document.getElementById('take').value || '1', 10);
+
+  let posRaw = document.getElementById('position').value.trim().toUpperCase().replace(/[^A-Z]/g, '');
+  const posLetter = posRaw ? posRaw.slice(0,1) : 'A';
+  document.getElementById('position').value = posLetter;
+  state.position = posLetter;
+
+  if(sceneChanged){
+    document.getElementById('sceneDesc').value = sceneDescriptions[state.scene] || '';
+  }
+  saveState();
+}
+
+function toggleFlag(name){
+  flags[name] = !flags[name];
+  document.getElementById('flagCircle').classList.toggle('on', flags[name]);
+}
+
+async function logTake(status){
+  const scene = parseInt(document.getElementById('scene').value || '1', 10);
+  const shot = parseInt(document.getElementById('shot').value || '1', 10);
+  const take = parseInt(document.getElementById('take').value || '1', 10);
+  const position = (document.getElementById('position').value || 'A').toUpperCase().slice(0,1);
+  const notes = document.getElementById('notes').value.trim();
+
+  const entry = {
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2,6),
+    scene, shot, take, position, status,
+    circle: flags.circle,
+    notes,
+    timecode: lastTC,
+    fps: fps,
+    time: new Date().toISOString()
+  };
+  entries.unshift(entry);
+  await saveEntries();
+
+  // advance take, reset flags/notes
+  state.scene = scene; state.shot = shot; state.take = take + 1; state.position = position;
+  document.getElementById('take').value = state.take;
+  document.getElementById('notes').value = '';
+  flags.circle = false;
+  document.getElementById('flagCircle').classList.remove('on');
+  await saveState();
+
+  showToast(status === 'good' ? `נרשם ✓ סצנה ${scene} שוט ${shot} טייק ${take} עמדה ${position}` : `נרשם NG — סצנה ${scene} שוט ${shot} טייק ${take} עמדה ${position}`);
+  render();
+}
+
+async function deleteEntry(id){
+  entries = entries.filter(e => e.id !== id);
+  await saveEntries();
+  render();
+}
+
+async function clearAll(){
+  if(!confirm('לאפס את כל היומן? הפעולה לא הפיכה.')) return;
+  entries = [];
+  await saveEntries();
+  render();
+  showToast('היומן אופס');
+}
+
+function exportCSV(){
+  if(entries.length === 0){ showToast('אין רשומות לייצוא'); return; }
+  const header = ['סצנה','תיאור סצנה','שוט','טייק','עמדה','סטטוס','טיים קוד','FPS','מצוין מאוד','הערות','זמן'];
+  const rows = entries.map(e => [
+    e.scene,
+    (sceneDescriptions[e.scene] || '').replace(/,/g,';'),
+    e.shot, e.take, e.position || '',
+    e.status === 'good' ? 'GOOD' : 'NG',
+    e.timecode || '',
+    e.fps || '',
+    e.circle ? 'כן' : '',
+    (e.notes || '').replace(/,/g,';'),
+    new Date(e.time).toLocaleString('he-IL')
+  ]);
+  const csv = '\uFEFF' + [header, ...rows].map(r => r.join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `script-log-${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(showToast._timer);
+  showToast._timer = setTimeout(() => t.classList.remove('show'), 1800);
+}
+
+function render(){
+  const logEl = document.getElementById('log');
+  const q = document.getElementById('search').value.trim().toLowerCase();
+
+  let filtered = entries;
+  if(q){
+    filtered = entries.filter(e =>
+      String(e.scene).includes(q) ||
+      String(e.shot).includes(q) ||
+      String(e.take).includes(q) ||
+      String(e.position || '').includes(q) ||
+      (e.notes || '').toLowerCase().includes(q)
+    );
+  }
+
+  if(filtered.length === 0){
+    logEl.innerHTML = `<div class="empty">${entries.length === 0 ? 'עוד לא נרשמו טייקים. סמנו GOOD או NG כדי להתחיל.' : 'לא נמצאו תוצאות'}</div>`;
+    return;
+  }
+
+  // group by scene, preserving order of first appearance (already newest-first)
+  const groups = [];
+  const groupMap = {};
+  filtered.forEach(e => {
+    if(!(e.scene in groupMap)){
+      groupMap[e.scene] = [];
+      groups.push(e.scene);
+    }
+    groupMap[e.scene].push(e);
+  });
+
+  logEl.innerHTML = groups.map(scene => `
+    <div class="scene-group">
+      <div class="scene-label">סצנה ${scene}${sceneDescriptions[scene] ? ' — ' + escapeHtml(sceneDescriptions[scene]) : ''}</div>
+      ${groupMap[scene].map(e => `
+        <div class="entry">
+          <span class="status-dot ${e.status}"></span>
+          <div class="info">
+            <div class="title">סצנה ${e.scene} שוט ${e.shot} טייק ${e.take}${e.position ? ' עמדה ' + e.position : ''} — <span class="status-word ${e.status}">${e.status === 'good' ? 'GOOD' : 'NG'}</span></div>
+            ${e.notes ? `<div class="note">${escapeHtml(e.notes)}</div>` : ''}
+            <div class="meta">${e.timecode ? 'TC ' + e.timecode : new Date(e.time).toLocaleTimeString('he-IL', {hour:'2-digit', minute:'2-digit'})}</div>
+          </div>
+          ${e.circle ? '<span class="star">★</span>' : ''}
+          <button class="del" onclick="deleteEntry('${e.id}')" title="מחיקה">✕</button>
+        </div>
+      `).join('')}
+    </div>
+  `).join('');
+}
+
+function escapeHtml(str){
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+loadData();
+</script>
+</body>
+</html>
