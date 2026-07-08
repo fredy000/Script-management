@@ -7,6 +7,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
 <style>
   :root{
     --bg: #1c1b19;
@@ -49,6 +51,35 @@
   .top .day{
     font-family: var(--mono); font-size: 12px; color: var(--text-faint);
   }
+
+  .sync-row{
+    display:flex; align-items:center; gap:8px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 8px 10px;
+    margin-bottom: 14px;
+  }
+  .sync-dot{
+    width:8px; height:8px; border-radius:50%; flex-shrink:0;
+    background: var(--text-faint);
+  }
+  .sync-dot.connected{ background: var(--good); }
+  .sync-dot.connecting{ background: var(--tungsten); animation: blink 1s steps(1) infinite; }
+  .sync-dot.error{ background: var(--ng); }
+  .sync-label{ font-size: 11px; color: var(--text-faint); white-space:nowrap; }
+  .sync-row input{
+    flex:1; min-width: 60px;
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 6px 8px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    text-align:center;
+  }
+  .sync-row input::placeholder{ color: var(--text-faint); }
 
   /* ---- Slate ---- */
   .slate{
@@ -352,6 +383,13 @@
     <span class="day" id="dayLabel"></span>
   </div>
 
+  <div class="sync-row">
+    <span class="sync-dot" id="syncDot"></span>
+    <span class="sync-label">קוד יום צילום:</span>
+    <input id="roomCode" type="text" value="default" placeholder="לדוגמה: rambo-day3" onchange="onRoomCodeChange()">
+    <span class="sync-label" id="syncStatus">מתחבר…</span>
+  </div>
+
   <div class="slate">
     <div class="slate-stripes"></div>
     <div class="slate-body">
@@ -442,6 +480,17 @@
 </div>
 
 <script>
+const firebaseConfig = {
+  apiKey: "AIzaSyCEkJa1USjPmD4x1_9yZ4TJmyujGuEsHBA",
+  authDomain: "script-managemen.firebaseapp.com",
+  projectId: "script-managemen",
+  storageBucket: "script-managemen.firebasestorage.app",
+  messagingSenderId: "366419192861",
+  appId: "1:366419192861:web:71b72174474c1c738deaf4"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
 let entries = [];
 let state = { scene: 1, shot: 1, take: 1, position: 'A' };
 let flags = { circle: false };
@@ -449,36 +498,90 @@ let fps = 25;
 let lastTC = '00:00:00:00';
 let sceneDescriptions = {};
 
+let currentRoomRef = null;
+let currentEntriesRef = null;
+let metaUnsub = null;
+let entriesUnsub = null;
+
 const dayLabel = document.getElementById('dayLabel');
 dayLabel.textContent = new Date().toLocaleDateString('he-IL', { day:'2-digit', month:'2-digit', year:'numeric' });
 
-async function loadData(){
-  try{
-    const res = await window.storage.get('script-log-entries', false);
-    entries = res ? JSON.parse(res.value) : [];
-  }catch(e){ entries = []; }
-  try{
-    const res2 = await window.storage.get('script-log-state', false);
-    if(res2){ state = JSON.parse(res2.value); }
-  }catch(e){}
-  try{
-    const res3 = await window.storage.get('script-log-fps', false);
-    if(res3){ fps = parseFloat(res3.value); }
-  }catch(e){}
-  try{
-    const res4 = await window.storage.get('script-log-scene-desc', false);
-    if(res4){ sceneDescriptions = JSON.parse(res4.value); }
-  }catch(e){}
-  document.getElementById('fpsSelect').value = String(fps);
-  applyState();
-  render();
-  startClock();
+function setSyncStatus(s){
+  const dot = document.getElementById('syncDot');
+  const label = document.getElementById('syncStatus');
+  dot.className = 'sync-dot ' + s;
+  label.textContent = s === 'connected' ? 'מסונכרן ● כל המכשירים'
+    : s === 'connecting' ? 'מתחבר…'
+    : 'שגיאת חיבור — בדוק את חוקי Firestore';
 }
 
-async function onFpsChange(){
+function isFocused(id){
+  return document.activeElement && document.activeElement.id === id;
+}
+
+function connectToRoom(code){
+  if(metaUnsub){ metaUnsub(); metaUnsub = null; }
+  if(entriesUnsub){ entriesUnsub(); entriesUnsub = null; }
+  entries = [];
+  render();
+  setSyncStatus('connecting');
+
+  currentRoomRef = db.collection('rooms').doc(code);
+  currentEntriesRef = currentRoomRef.collection('entries');
+
+  metaUnsub = currentRoomRef.onSnapshot(doc => {
+    setSyncStatus('connected');
+    if(!doc.exists){
+      currentRoomRef.set({
+        state, fps, sceneDescriptions
+      }, { merge: true }).catch(() => {});
+      return;
+    }
+    const data = doc.data();
+    if(data.fps !== undefined && !isFocused('fpsSelect')){
+      fps = data.fps;
+      document.getElementById('fpsSelect').value = String(fps);
+    }
+    if(data.sceneDescriptions){
+      sceneDescriptions = data.sceneDescriptions;
+    }
+    if(data.state){
+      if(!isFocused('scene')) state.scene = data.state.scene ?? state.scene;
+      if(!isFocused('shot')) state.shot = data.state.shot ?? state.shot;
+      if(!isFocused('take')) state.take = data.state.take ?? state.take;
+      if(!isFocused('position')) state.position = data.state.position ?? state.position;
+    }
+    applyState();
+    render();
+  }, err => {
+    console.error(err);
+    setSyncStatus('error');
+  });
+
+  entriesUnsub = currentEntriesRef.orderBy('createdAt', 'desc').onSnapshot(snap => {
+    entries = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    render();
+  }, err => {
+    console.error(err);
+    setSyncStatus('error');
+  });
+}
+
+async function saveMeta(partial){
+  if(!currentRoomRef) return;
+  try{ await currentRoomRef.set(partial, { merge: true }); }
+  catch(e){ console.error(e); showToast('שגיאת סנכרון — בדוק חיבור/חוקי Firestore'); }
+}
+
+function onRoomCodeChange(){
+  const val = document.getElementById('roomCode').value.trim() || 'default';
+  document.getElementById('roomCode').value = val;
+  connectToRoom(val);
+}
+
+function onFpsChange(){
   fps = parseFloat(document.getElementById('fpsSelect').value);
-  try{ await window.storage.set('script-log-fps', String(fps), false); }
-  catch(e){}
+  saveMeta({ fps });
 }
 
 function pad(n, len){
@@ -520,21 +623,11 @@ function applyState(){
   document.getElementById('sceneDesc').value = sceneDescriptions[state.scene] || '';
 }
 
-async function onSceneDescChange(){
+function onSceneDescChange(){
   const val = document.getElementById('sceneDesc').value.trim();
   sceneDescriptions[state.scene] = val;
-  try{ await window.storage.set('script-log-scene-desc', JSON.stringify(sceneDescriptions), false); }
-  catch(e){}
+  saveMeta({ sceneDescriptions });
   render();
-}
-
-async function saveEntries(){
-  try{ await window.storage.set('script-log-entries', JSON.stringify(entries), false); }
-  catch(e){ showToast('שגיאה בשמירה'); }
-}
-async function saveState(){
-  try{ await window.storage.set('script-log-state', JSON.stringify(state), false); }
-  catch(e){}
 }
 
 function nextLetter(letter, delta){
@@ -577,7 +670,7 @@ function onFieldChange(){
   if(sceneChanged){
     document.getElementById('sceneDesc').value = sceneDescriptions[state.scene] || '';
   }
-  saveState();
+  saveMeta({ state });
 }
 
 function toggleFlag(name){
@@ -593,16 +686,22 @@ async function logTake(status){
   const notes = document.getElementById('notes').value.trim();
 
   const entry = {
-    id: Date.now().toString(36) + Math.random().toString(36).slice(2,6),
     scene, shot, take, position, status,
     circle: flags.circle,
     notes,
     timecode: lastTC,
     fps: fps,
-    time: new Date().toISOString()
+    time: new Date().toISOString(),
+    createdAt: firebase.firestore.FieldValue.serverTimestamp()
   };
-  entries.unshift(entry);
-  await saveEntries();
+
+  try{
+    await currentEntriesRef.add(entry);
+  }catch(e){
+    console.error(e);
+    showToast('שגיאה בשמירה — בדוק חיבור/חוקי Firestore');
+    return;
+  }
 
   // advance take, reset flags/notes
   state.scene = scene; state.shot = shot; state.take = take + 1; state.position = position;
@@ -610,24 +709,28 @@ async function logTake(status){
   document.getElementById('notes').value = '';
   flags.circle = false;
   document.getElementById('flagCircle').classList.remove('on');
-  await saveState();
+  await saveMeta({ state });
 
   showToast(status === 'good' ? `נרשם ✓ סצנה ${scene} שוט ${shot} טייק ${take} עמדה ${position}` : `נרשם NG — סצנה ${scene} שוט ${shot} טייק ${take} עמדה ${position}`);
-  render();
 }
 
 async function deleteEntry(id){
-  entries = entries.filter(e => e.id !== id);
-  await saveEntries();
-  render();
+  try{ await currentEntriesRef.doc(id).delete(); }
+  catch(e){ console.error(e); showToast('שגיאה במחיקה'); }
 }
 
 async function clearAll(){
   if(!confirm('לאפס את כל היומן? הפעולה לא הפיכה.')) return;
-  entries = [];
-  await saveEntries();
-  render();
-  showToast('היומן אופס');
+  try{
+    const snap = await currentEntriesRef.get();
+    const batch = db.batch();
+    snap.docs.forEach(d => batch.delete(d.ref));
+    await batch.commit();
+    showToast('היומן אופס');
+  }catch(e){
+    console.error(e);
+    showToast('שגיאה באיפוס');
+  }
 }
 
 function exportCSV(){
@@ -718,7 +821,8 @@ function escapeHtml(str){
   return div.innerHTML;
 }
 
-loadData();
+connectToRoom(document.getElementById('roomCode').value.trim() || 'default');
+startClock();
 </script>
 </body>
 </html>
