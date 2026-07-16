@@ -770,11 +770,11 @@ function exportPremiereMarkers(){
   if(entries.length === 0){ showToast('אין רשומות לייצוא'); return; }
   // Chronological order (markers should be time-ordered)
   const sorted = [...entries].sort((a,b) => new Date(a.time) - new Date(b.time));
-  const header = ['Timecode In', 'Timecode Out', 'Name', 'Comment', 'Colour'];
+  const header = ['Timecode In', 'Timecode Out', 'Name', 'Comment', 'Color'];
   const rows = sorted.map(e => {
     const name = `סצנה ${e.scene} שוט ${e.shot} טייק ${e.take}${e.position ? ' ' + e.position : ''} — ${e.status === 'good' ? 'GOOD' : 'NG'}${e.circle ? ' ★' : ''}`;
     const tc = e.timecode || '00:00:00:00';
-    const colour = e.status === 'good' ? 'Green' : 'Red';
+    const colour = e.status === 'good' ? 'green' : 'red';
     return [tc, tc, name, e.notes || '', colour];
   });
   const csv = '\uFEFF' + [header, ...rows].map(r => r.map(csvField).join(',')).join('\r\n');
