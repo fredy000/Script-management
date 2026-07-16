@@ -264,7 +264,7 @@
     font-size: 13px; text-transform: uppercase; letter-spacing: 1px;
     color: var(--text-dim); margin:0; font-weight:700;
   }
-  .log-tools{ display:flex; gap:8px; }
+  .log-tools{ display:flex; gap:8px; flex-wrap: wrap; justify-content: flex-end; }
   .icon-btn{
     background: var(--panel);
     border: 1px solid var(--line);
@@ -466,6 +466,7 @@
     <h2>יומן צילום</h2>
     <div class="log-tools">
       <button class="icon-btn" onclick="exportCSV()">ייצוא CSV</button>
+      <button class="icon-btn" onclick="exportPremiereMarkers()">ייצוא לפרימייר פרו</button>
       <button class="icon-btn" onclick="clearAll()">איפוס</button>
     </div>
   </div>
@@ -753,6 +754,35 @@ function exportCSV(){
   const a = document.createElement('a');
   a.href = url;
   a.download = `script-log-${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function csvField(val){
+  const str = String(val ?? '');
+  if(/[",\r\n]/.test(str)){
+    return '"' + str.replace(/"/g, '""') + '"';
+  }
+  return str;
+}
+
+function exportPremiereMarkers(){
+  if(entries.length === 0){ showToast('אין רשומות לייצוא'); return; }
+  // Chronological order (markers should be time-ordered)
+  const sorted = [...entries].sort((a,b) => new Date(a.time) - new Date(b.time));
+  const header = ['Timecode In', 'Timecode Out', 'Name', 'Comment', 'Colour'];
+  const rows = sorted.map(e => {
+    const name = `סצנה ${e.scene} שוט ${e.shot} טייק ${e.take}${e.position ? ' ' + e.position : ''} — ${e.status === 'good' ? 'GOOD' : 'NG'}${e.circle ? ' ★' : ''}`;
+    const tc = e.timecode || '00:00:00:00';
+    const colour = e.status === 'good' ? 'Green' : 'Red';
+    return [tc, tc, name, e.notes || '', colour];
+  });
+  const csv = '\uFEFF' + [header, ...rows].map(r => r.map(csvField).join(',')).join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `premiere-markers-${new Date().toISOString().slice(0,10)}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }
