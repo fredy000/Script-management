@@ -466,7 +466,8 @@
     <h2>יומן צילום</h2>
     <div class="log-tools">
       <button class="icon-btn" onclick="exportCSV()">ייצוא CSV</button>
-      <button class="icon-btn" onclick="exportPremiereMarkers()">ייצוא לפרימייר פרו</button>
+      <button class="icon-btn" onclick="exportPremiereMarkers()">ייצוא CSV לפרימייר</button>
+      <button class="icon-btn" onclick="exportPremiereXML()">הורדת XML לפרימייר</button>
       <button class="icon-btn" onclick="clearAll()">איפוס</button>
     </div>
   </div>
@@ -783,6 +784,94 @@ function exportPremiereMarkers(){
   const a = document.createElement('a');
   a.href = url;
   a.download = `premiere-markers-${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function escapeXml(str){
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+function tcToFrames(tc, frameRate){
+  const parts = (tc || '00:00:00:00').split(':').map(n => parseInt(n, 10) || 0);
+  const [h, m, s, f] = parts;
+  return ((h * 60 + m) * 60 + s) * Math.round(frameRate) + f;
+}
+
+function getTimebaseInfo(frameRate){
+  if(Math.abs(frameRate - 23.976) < 0.01) return { timebase: 24, ntsc: true };
+  if(Math.abs(frameRate - 29.97) < 0.01) return { timebase: 30, ntsc: true };
+  return { timebase: Math.round(frameRate), ntsc: false };
+}
+
+function exportPremiereXML(){
+  if(entries.length === 0){ showToast('אין רשומות לייצוא'); return; }
+  const sorted = [...entries].sort((a, b) => new Date(a.time) - new Date(b.time));
+  const exportFps = fps;
+  const { timebase, ntsc } = getTimebaseInfo(exportFps);
+
+  const markersXml = sorted.map(e => {
+    const tc = e.timecode || '00:00:00:00';
+    const inFrame = tcToFrames(tc, exportFps);
+    const outFrame = inFrame + 1;
+    const name = `סצנה ${e.scene} שוט ${e.shot} טייק ${e.take}${e.position ? ' ' + e.position : ''} — ${e.status === 'good' ? 'GOOD' : 'NG'}${e.circle ? ' ★' : ''}`;
+    return `    <marker>
+      <name>${escapeXml(name)}</name>
+      <comment>${escapeXml(e.notes || '')}</comment>
+      <in>${inFrame}</in>
+      <out>${outFrame}</out>
+    </marker>`;
+  }).join('\n');
+
+  const lastFrame = tcToFrames(sorted[sorted.length - 1].timecode || '00:00:00:00', exportFps) + 100;
+
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE xmeml>
+<xmeml version="4">
+  <sequence>
+    <name>לוח תסריט - מרקרים</name>
+    <duration>${lastFrame}</duration>
+    <rate>
+      <timebase>${timebase}</timebase>
+      <ntsc>${ntsc ? 'TRUE' : 'FALSE'}</ntsc>
+    </rate>
+    <media>
+      <video>
+        <format>
+          <samplecharacteristics>
+            <rate>
+              <timebase>${timebase}</timebase>
+              <ntsc>${ntsc ? 'TRUE' : 'FALSE'}</ntsc>
+            </rate>
+            <width>1920</width>
+            <height>1080</height>
+          </samplecharacteristics>
+        </format>
+      </video>
+    </media>
+    <timecode>
+      <rate>
+        <timebase>${timebase}</timebase>
+        <ntsc>${ntsc ? 'TRUE' : 'FALSE'}</ntsc>
+      </rate>
+      <string>00:00:00:00</string>
+      <frame>0</frame>
+      <displayformat>${ntsc ? 'DF' : 'NDF'}</displayformat>
+    </timecode>
+${markersXml}
+  </sequence>
+</xmeml>`;
+
+  const blob = new Blob([xml], { type: 'application/xml;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `premiere-markers-${new Date().toISOString().slice(0,10)}.xml`;
   a.click();
   URL.revokeObjectURL(url);
 }
