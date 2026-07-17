@@ -756,27 +756,50 @@ function getTimebaseInfo(frameRate){
 
 function exportPremiereXML(){
   if(entries.length === 0){ showToast('אין רשומות לייצוא'); return; }
+
   const getSortTime = e => (e.createdAt && typeof e.createdAt.toDate === 'function')
     ? e.createdAt.toDate().getTime()
     : new Date(e.time).getTime();
+
   const sorted = [...entries].sort((a, b) => getSortTime(a) - getSortTime(b));
+
+  // חשוב: ה-FPS של הייצוא חייב להיות זהה ל-FPS של הסיקוונס בפרימייר.
   const exportFps = fps;
   const { timebase, ntsc } = getTimebaseInfo(exportFps);
 
+  // Premiere שומר את מיקום המרקרים יחסית לתחילת הסיקוונס,
+  // ולא כמספר פריימים מוחלט מחצות.
+  // לכן מתחילים את הסיקוונס בתחילת השעה של המרקר הראשון.
+  const firstTc = sorted[0].timecode || '00:00:00:00';
+  const firstParts = firstTc.split(':').map(n => parseInt(n, 10) || 0);
+  const sequenceStartTc = `${pad(firstParts[0])}:00:00:00`;
+  const sequenceStartFrame = tcToFrames(sequenceStartTc, exportFps);
+
   const markersXml = sorted.map(e => {
-    const tc = e.timecode || '00:00:00:00';
-    const inFrame = tcToFrames(tc, exportFps);
+    const tc = e.timecode || sequenceStartTc;
+    const absoluteFrame = tcToFrames(tc, exportFps);
+    const inFrame = Math.max(0, absoluteFrame - sequenceStartFrame);
     const outFrame = inFrame + 1;
+
     const name = `סצנה ${e.scene} שוט ${e.shot} טייק ${e.take}${e.position ? ' ' + e.position : ''} — ${e.status === 'good' ? 'GOOD' : 'NG'}${e.circle ? ' ★' : ''}`;
+
     return `    <marker>
       <name>${escapeXml(name)}</name>
       <comment>${escapeXml(e.notes || '')}</comment>
       <in>${inFrame}</in>
       <out>${outFrame}</out>
     </marker>`;
-  }).join('\n');
+  }).join('
+');
 
-  const lastFrame = tcToFrames(sorted[sorted.length - 1].timecode || '00:00:00:00', exportFps) + 100;
+  const lastAbsoluteFrame = tcToFrames(
+    sorted[sorted.length - 1].timecode || sequenceStartTc,
+    exportFps
+  );
+  const lastFrame = Math.max(
+    Math.round(exportFps * 60),
+    lastAbsoluteFrame - sequenceStartFrame + Math.round(exportFps * 10)
+  );
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE xmeml>
@@ -838,8 +861,8 @@ function exportPremiereXML(){
         <timebase>${timebase}</timebase>
         <ntsc>${ntsc ? 'TRUE' : 'FALSE'}</ntsc>
       </rate>
-      <string>00:00:00:00</string>
-      <frame>0</frame>
+      <string>${sequenceStartTc}</string>
+      <frame>${sequenceStartFrame}</frame>
       <displayformat>${ntsc ? 'DF' : 'NDF'}</displayformat>
     </timecode>
 ${markersXml}
