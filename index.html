@@ -401,7 +401,7 @@
         <div class="tc-display" id="tcDisplay">--:--:--<span class="tc-frames">:--</span></div>
         <select class="fps-select" id="fpsSelect" onchange="onFpsChange()">
           <option value="25">25fps</option>
-          <option value="24">24fps</option>
+          <option value="24" selected>24fps</option>
           <option value="23.976">23.98fps</option>
           <option value="30">30fps</option>
           <option value="29.97">29.97fps</option>
@@ -494,7 +494,7 @@ const db = firebase.firestore();
 let entries = [];
 let state = { scene: 1, shot: 1, take: 1, position: 'A' };
 let flags = { circle: false };
-let fps = 25;
+let fps = 24;
 let lastTC = '00:00:00:00';
 let sceneDescriptions = {};
 
@@ -763,47 +763,33 @@ function exportPremiereXML(){
 
   const sorted = [...entries].sort((a, b) => getSortTime(a) - getSortTime(b));
 
-  // חשוב: ה-FPS של הייצוא חייב להיות זהה ל-FPS של הסיקוונס בפרימייר.
-  const exportFps = fps;
-  const { timebase, ntsc } = getTimebaseInfo(exportFps);
+  // הקובץ שעבד ב-Premiere היה 24fps ובמבנה XMEML בסיסי.
+  // לכן הייצוא נשמר בדיוק באותו מבנה.
+  const exportFps = 24;
+  const timebase = 24;
+  const ntsc = false;
 
-  // Premiere שומר את מיקום המרקרים יחסית לתחילת הסיקוונס,
-  // ולא כמספר פריימים מוחלט מחצות.
-  // לכן מתחילים את הסיקוונס בתחילת השעה של המרקר הראשון.
-  const firstTc = sorted[0].timecode || '00:00:00:00';
-  const firstParts = firstTc.split(':').map(n => parseInt(n, 10) || 0);
-  const sequenceStartTc = `${pad(firstParts[0])}:00:00:00`;
-  const sequenceStartFrame = tcToFrames(sequenceStartTc, exportFps);
-
-  const framesPerDay = Math.round(exportFps) * 24 * 60 * 60;
-  const markerData = sorted.map(e => {
-    const tc = e.timecode || sequenceStartTc;
-    let absoluteFrame = tcToFrames(tc, exportFps);
-
-    // אם יום הצילום עבר חצות, שעה כמו 00:30 שייכת ליום הבא.
-    if(absoluteFrame < sequenceStartFrame){
-      absoluteFrame += framesPerDay;
-    }
-
-    const inFrame = absoluteFrame - sequenceStartFrame;
+  const markersXml = sorted.map(e => {
+    const tc = e.timecode || '00:00:00:00';
+    const inFrame = tcToFrames(tc, exportFps);
     const outFrame = inFrame + 1;
     const name = `סצנה ${e.scene} שוט ${e.shot} טייק ${e.take}${e.position ? ' ' + e.position : ''} — ${e.status === 'good' ? 'GOOD' : 'NG'}${e.circle ? ' ★' : ''}`;
-    return { e, inFrame, outFrame, name };
-  });
 
-  const markersXml = markerData.map(({ e, inFrame, outFrame, name }) => `    <marker>
+    return `    <marker>
       <name>${escapeXml(name)}</name>
       <comment>${escapeXml(e.notes || '')}</comment>
       <in>${inFrame}</in>
       <out>${outFrame}</out>
-    </marker>`).join('\n');
+    </marker>`;
+  }).join('
+');
 
-  // משך הסיקוונס חייב לכלול את המרקר האחרון, אחרת Premiere דוחה את ה-XML.
-  const maxMarkerOut = Math.max(...markerData.map(m => m.outFrame));
-  const lastFrame = Math.max(
-    Math.round(exportFps * 60),
-    maxMarkerOut + Math.round(exportFps * 10)
-  );
+  // כמו בקובץ הישן שעבד: משך מחושב לפי המרקר האחרון ברשימה,
+  // בלי generatoritem ובלי track מלאכותי.
+  const lastFrame = tcToFrames(
+    sorted[sorted.length - 1].timecode || '00:00:00:00',
+    exportFps
+  ) + 100;
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE xmeml>
@@ -813,7 +799,7 @@ function exportPremiereXML(){
     <duration>${lastFrame}</duration>
     <rate>
       <timebase>${timebase}</timebase>
-      <ntsc>${ntsc ? 'TRUE' : 'FALSE'}</ntsc>
+      <ntsc>FALSE</ntsc>
     </rate>
     <media>
       <video>
@@ -821,53 +807,22 @@ function exportPremiereXML(){
           <samplecharacteristics>
             <rate>
               <timebase>${timebase}</timebase>
-              <ntsc>${ntsc ? 'TRUE' : 'FALSE'}</ntsc>
+              <ntsc>FALSE</ntsc>
             </rate>
             <width>1920</width>
             <height>1080</height>
           </samplecharacteristics>
         </format>
-        <track>
-          <generatoritem>
-            <name>סמן זמן — Script Log</name>
-            <duration>${lastFrame}</duration>
-            <rate>
-              <timebase>${timebase}</timebase>
-              <ntsc>${ntsc ? 'TRUE' : 'FALSE'}</ntsc>
-            </rate>
-            <start>0</start>
-            <end>${lastFrame}</end>
-            <in>0</in>
-            <out>${lastFrame}</out>
-            <effect>
-              <name>Color</name>
-              <effectid>Color</effectid>
-              <effectcategory>Matte</effectcategory>
-              <effecttype>generator</effecttype>
-              <mediatype>video</mediatype>
-              <parameter>
-                <parameterid>colour</parameterid>
-                <name>Color</name>
-                <value>
-                  <alpha>0</alpha>
-                  <red>0</red>
-                  <green>0</green>
-                  <blue>0</blue>
-                </value>
-              </parameter>
-            </effect>
-          </generatoritem>
-        </track>
       </video>
     </media>
     <timecode>
       <rate>
         <timebase>${timebase}</timebase>
-        <ntsc>${ntsc ? 'TRUE' : 'FALSE'}</ntsc>
+        <ntsc>FALSE</ntsc>
       </rate>
-      <string>${sequenceStartTc}</string>
+      <string>00:00:00:00</string>
       <frame>0</frame>
-      <displayformat>${ntsc ? 'DF' : 'NDF'}</displayformat>
+      <displayformat>NDF</displayformat>
     </timecode>
 ${markersXml}
   </sequence>
@@ -878,14 +833,10 @@ ${markersXml}
   const a = document.createElement('a');
   a.href = url;
   a.download = `premiere-markers-${new Date().toISOString().slice(0,10)}.xml`;
-  a.style.display = 'none';
   document.body.appendChild(a);
   a.click();
-  setTimeout(() => {
-    URL.revokeObjectURL(url);
-    a.remove();
-  }, 1000);
-  showToast('קובץ XML ירד למחשב');
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function showToast(msg){
