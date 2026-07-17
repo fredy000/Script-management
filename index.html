@@ -775,29 +775,34 @@ function exportPremiereXML(){
   const sequenceStartTc = `${pad(firstParts[0])}:00:00:00`;
   const sequenceStartFrame = tcToFrames(sequenceStartTc, exportFps);
 
-  const markersXml = sorted.map(e => {
+  const framesPerDay = Math.round(exportFps) * 24 * 60 * 60;
+  const markerData = sorted.map(e => {
     const tc = e.timecode || sequenceStartTc;
-    const absoluteFrame = tcToFrames(tc, exportFps);
-    const inFrame = Math.max(0, absoluteFrame - sequenceStartFrame);
+    let absoluteFrame = tcToFrames(tc, exportFps);
+
+    // אם יום הצילום עבר חצות, שעה כמו 00:30 שייכת ליום הבא.
+    if(absoluteFrame < sequenceStartFrame){
+      absoluteFrame += framesPerDay;
+    }
+
+    const inFrame = absoluteFrame - sequenceStartFrame;
     const outFrame = inFrame + 1;
-
     const name = `סצנה ${e.scene} שוט ${e.shot} טייק ${e.take}${e.position ? ' ' + e.position : ''} — ${e.status === 'good' ? 'GOOD' : 'NG'}${e.circle ? ' ★' : ''}`;
+    return { e, inFrame, outFrame, name };
+  });
 
-    return `    <marker>
+  const markersXml = markerData.map(({ e, inFrame, outFrame, name }) => `    <marker>
       <name>${escapeXml(name)}</name>
       <comment>${escapeXml(e.notes || '')}</comment>
       <in>${inFrame}</in>
       <out>${outFrame}</out>
-    </marker>`;
-  }).join('\n');
+    </marker>`).join('\n');
 
-  const lastAbsoluteFrame = tcToFrames(
-    sorted[sorted.length - 1].timecode || sequenceStartTc,
-    exportFps
-  );
+  // משך הסיקוונס חייב לכלול את המרקר האחרון, אחרת Premiere דוחה את ה-XML.
+  const maxMarkerOut = Math.max(...markerData.map(m => m.outFrame));
   const lastFrame = Math.max(
     Math.round(exportFps * 60),
-    lastAbsoluteFrame - sequenceStartFrame + Math.round(exportFps * 10)
+    maxMarkerOut + Math.round(exportFps * 10)
   );
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
