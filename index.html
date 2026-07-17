@@ -400,7 +400,7 @@
         </div>
         <div class="tc-display" id="tcDisplay">--:--:--<span class="tc-frames">:--</span></div>
         <select class="fps-select" id="fpsSelect" onchange="onFpsChange()">
-          <option value="25">25fps</option>
+          <option value="25" selected>25fps</option>
           <option value="24">24fps</option>
           <option value="23.976">23.98fps</option>
           <option value="30">30fps</option>
@@ -763,13 +763,39 @@ function exportPremiereXML(){
 
   const sorted = [...entries].sort((a, b) => getSortTime(a) - getSortTime(b));
 
-  // אותו מבנה בדיוק כמו קובץ ה-XML שעבד בפרימייר.
-  const exportFps = 24;
-  const timebase = 24;
+  // הייצוא מותאם לסיקוונס 25fps.
+  const exportFps = 25;
+  const timebase = 25;
 
-  const markersXml = sorted.map(e => {
+  // שעת הטייק הראשון היא נקודת ההתחלה של הסיקוונס.
+  const firstTc = sorted[0].timecode || '00:00:00:00';
+  const firstAbsoluteFrame = tcToFrames(firstTc, exportFps);
+
+  // מחשב מיקום יחסי תוך טיפול במעבר חצות.
+  let previousAbsoluteFrame = firstAbsoluteFrame;
+  let dayOffsetFrames = 0;
+  const framesPerDay = 24 * 60 * 60 * exportFps;
+
+  const normalized = sorted.map((e, index) => {
     const tc = e.timecode || '00:00:00:00';
-    const inFrame = tcToFrames(tc, exportFps);
+    let absoluteFrame = tcToFrames(tc, exportFps) + dayOffsetFrames;
+
+    // אם השעה קטנה משמעותית מהקודמת, עברנו חצות.
+    if(index > 0 && absoluteFrame < previousAbsoluteFrame){
+      dayOffsetFrames += framesPerDay;
+      absoluteFrame += framesPerDay;
+    }
+
+    previousAbsoluteFrame = absoluteFrame;
+
+    return {
+      entry: e,
+      relativeFrame: absoluteFrame - firstAbsoluteFrame
+    };
+  });
+
+  const markersXml = normalized.map(({ entry: e, relativeFrame }) => {
+    const inFrame = Math.max(0, relativeFrame);
     const outFrame = inFrame + 1;
     const name = `סצנה ${e.scene} שוט ${e.shot} טייק ${e.take}${e.position ? ' ' + e.position : ''} — ${e.status === 'good' ? 'GOOD' : 'NG'}${e.circle ? ' ★' : ''}`;
 
@@ -781,11 +807,9 @@ function exportPremiereXML(){
     </marker>`;
   }).join('\n');
 
-  const lastFrame = tcToFrames(
-    sorted[sorted.length - 1].timecode || '00:00:00:00',
-    exportFps
-  ) + 100;
+  const lastFrame = normalized[normalized.length - 1].relativeFrame + (10 * exportFps);
 
+  // מבנה XMEML פשוט, כמו הקובץ שעבד אצלך קודם.
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE xmeml>
 <xmeml version="4">
@@ -815,7 +839,7 @@ function exportPremiereXML(){
         <timebase>${timebase}</timebase>
         <ntsc>FALSE</ntsc>
       </rate>
-      <string>00:00:00:00</string>
+      <string>${firstTc}</string>
       <frame>0</frame>
       <displayformat>NDF</displayformat>
     </timecode>
@@ -833,7 +857,6 @@ ${markersXml}
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
-
 function showToast(msg){
   const t = document.getElementById('toast');
   t.textContent = msg;
