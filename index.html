@@ -401,7 +401,7 @@
         <div class="tc-display" id="tcDisplay">--:--:--<span class="tc-frames">:--</span></div>
         <select class="fps-select" id="fpsSelect" onchange="onFpsChange()">
           <option value="25">25fps</option>
-          <option value="24" selected>24fps</option>
+          <option value="24">24fps</option>
           <option value="23.976">23.98fps</option>
           <option value="30">30fps</option>
           <option value="29.97">29.97fps</option>
@@ -494,7 +494,7 @@ const db = firebase.firestore();
 let entries = [];
 let state = { scene: 1, shot: 1, take: 1, position: 'A' };
 let flags = { circle: false };
-let fps = 24;
+let fps = 25;
 let lastTC = '00:00:00:00';
 let sceneDescriptions = {};
 
@@ -763,11 +763,9 @@ function exportPremiereXML(){
 
   const sorted = [...entries].sort((a, b) => getSortTime(a) - getSortTime(b));
 
-  // הקובץ שעבד ב-Premiere היה 24fps ובמבנה XMEML בסיסי.
-  // לכן הייצוא נשמר בדיוק באותו מבנה.
+  // אותו מבנה בדיוק כמו קובץ ה-XML שעבד בפרימייר.
   const exportFps = 24;
   const timebase = 24;
-  const ntsc = false;
 
   const markersXml = sorted.map(e => {
     const tc = e.timecode || '00:00:00:00';
@@ -781,11 +779,8 @@ function exportPremiereXML(){
       <in>${inFrame}</in>
       <out>${outFrame}</out>
     </marker>`;
-  }).join('
-');
+  }).join('\n');
 
-  // כמו בקובץ הישן שעבד: משך מחושב לפי המרקר האחרון ברשימה,
-  // בלי generatoritem ובלי track מלאכותי.
   const lastFrame = tcToFrames(
     sorted[sorted.length - 1].timecode || '00:00:00:00',
     exportFps
