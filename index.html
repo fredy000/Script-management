@@ -789,8 +789,7 @@ function exportPremiereXML(){
       <in>${inFrame}</in>
       <out>${outFrame}</out>
     </marker>`;
-  }).join('
-');
+  }).join('\n');
 
   const lastAbsoluteFrame = tcToFrames(
     sorted[sorted.length - 1].timecode || sequenceStartTc,
