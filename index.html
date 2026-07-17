@@ -800,6 +800,37 @@ function exportPremiereXML(){
             <height>1080</height>
           </samplecharacteristics>
         </format>
+        <track>
+          <generatoritem>
+            <name>סמן זמן — Script Log</name>
+            <duration>${lastFrame}</duration>
+            <rate>
+              <timebase>${timebase}</timebase>
+              <ntsc>${ntsc ? 'TRUE' : 'FALSE'}</ntsc>
+            </rate>
+            <start>0</start>
+            <end>${lastFrame}</end>
+            <in>0</in>
+            <out>${lastFrame}</out>
+            <effect>
+              <name>Color</name>
+              <effectid>Color</effectid>
+              <effectcategory>Matte</effectcategory>
+              <effecttype>generator</effecttype>
+              <mediatype>video</mediatype>
+              <parameter>
+                <parameterid>colour</parameterid>
+                <name>Color</name>
+                <value>
+                  <alpha>0</alpha>
+                  <red>0</red>
+                  <green>0</green>
+                  <blue>0</blue>
+                </value>
+              </parameter>
+            </effect>
+          </generatoritem>
+        </track>
       </video>
     </media>
     <timecode>
