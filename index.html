@@ -465,8 +465,6 @@
   <div class="log-head">
     <h2>יומן צילום</h2>
     <div class="log-tools">
-      <button class="icon-btn" onclick="exportCSV()">ייצוא CSV</button>
-      <button class="icon-btn" onclick="exportPremiereMarkers()">ייצוא CSV לפרימייר</button>
       <button class="icon-btn" onclick="exportPremiereXML()">הורדת XML לפרימייר</button>
       <button class="icon-btn" onclick="clearAll()">איפוס</button>
     </div>
@@ -735,59 +733,6 @@ async function clearAll(){
   }
 }
 
-function exportCSV(){
-  if(entries.length === 0){ showToast('אין רשומות לייצוא'); return; }
-  const header = ['סצנה','תיאור סצנה','שוט','טייק','עמדה','סטטוס','טיים קוד','FPS','מצוין מאוד','הערות','זמן'];
-  const rows = entries.map(e => [
-    e.scene,
-    (sceneDescriptions[e.scene] || '').replace(/,/g,';'),
-    e.shot, e.take, e.position || '',
-    e.status === 'good' ? 'GOOD' : 'NG',
-    e.timecode || '',
-    e.fps || '',
-    e.circle ? 'כן' : '',
-    (e.notes || '').replace(/,/g,';'),
-    new Date(e.time).toLocaleString('he-IL')
-  ]);
-  const csv = '\uFEFF' + [header, ...rows].map(r => r.join(',')).join('\n');
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `script-log-${new Date().toISOString().slice(0,10)}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-function csvField(val){
-  const str = String(val ?? '');
-  if(/[",\r\n]/.test(str)){
-    return '"' + str.replace(/"/g, '""') + '"';
-  }
-  return str;
-}
-
-function exportPremiereMarkers(){
-  if(entries.length === 0){ showToast('אין רשומות לייצוא'); return; }
-  // Chronological order (markers should be time-ordered)
-  const sorted = [...entries].sort((a,b) => new Date(a.time) - new Date(b.time));
-  const header = ['Timecode In', 'Timecode Out', 'Name', 'Comment', 'Color'];
-  const rows = sorted.map(e => {
-    const name = `סצנה ${e.scene} שוט ${e.shot} טייק ${e.take}${e.position ? ' ' + e.position : ''} — ${e.status === 'good' ? 'GOOD' : 'NG'}${e.circle ? ' ★' : ''}`;
-    const tc = e.timecode || '00:00:00:00';
-    const colour = e.status === 'good' ? 'green' : 'red';
-    return [tc, tc, name, e.notes || '', colour];
-  });
-  const csv = '\uFEFF' + [header, ...rows].map(r => r.map(csvField).join(',')).join('\r\n');
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `premiere-markers-${new Date().toISOString().slice(0,10)}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
 function escapeXml(str){
   return String(str ?? '')
     .replace(/&/g, '&amp;')
@@ -811,7 +756,10 @@ function getTimebaseInfo(frameRate){
 
 function exportPremiereXML(){
   if(entries.length === 0){ showToast('אין רשומות לייצוא'); return; }
-  const sorted = [...entries].sort((a, b) => new Date(a.time) - new Date(b.time));
+  const getSortTime = e => (e.createdAt && typeof e.createdAt.toDate === 'function')
+    ? e.createdAt.toDate().getTime()
+    : new Date(e.time).getTime();
+  const sorted = [...entries].sort((a, b) => getSortTime(a) - getSortTime(b));
   const exportFps = fps;
   const { timebase, ntsc } = getTimebaseInfo(exportFps);
 
