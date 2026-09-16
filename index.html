@@ -143,8 +143,26 @@
     gap: 8px;
     margin-bottom: 14px;
   }
-  @media (max-width: 400px){
-    .fields{ grid-template-columns: repeat(2, 1fr); }
+  @media (max-width: 640px){
+    .fields{
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .stepper{
+      padding: 6px 4px;
+    }
+    .stepper button{
+      width: 34px;
+      height: 38px;
+      font-size: 20px;
+    }
+    .stepper input{
+      font-size: 24px;
+      min-width: 44px;
+    }
+    .field label{
+      font-size: 12px;
+    }
   }
   .field label{
     display:block;
