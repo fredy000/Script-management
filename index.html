@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-database-compat.js"></script>
 <style>
   :root{
     --bg: #1c1b19;
@@ -483,13 +483,14 @@
 const firebaseConfig = {
   apiKey: "AIzaSyCEkJa1USjPmD4x1_9yZ4TJmyujGuEsHBA",
   authDomain: "script-managemen.firebaseapp.com",
+  databaseURL: "https://script-managemen-default-rtdb.europe-west1.firebasedatabase.app",
   projectId: "script-managemen",
   storageBucket: "script-managemen.firebasestorage.app",
   messagingSenderId: "366419192861",
   appId: "1:366419192861:web:71b72174474c1c738deaf4"
 };
 firebase.initializeApp(firebaseConfig);
-const db = firebase.firestore();
+const db = firebase.database();
 
 let entries = [];
 let state = { scene: 1, shot: 1, take: 1, position: 'A' };
@@ -512,65 +513,113 @@ function setSyncStatus(s){
   dot.className = 'sync-dot ' + s;
   label.textContent = s === 'connected' ? 'מסונכרן ● כל המכשירים'
     : s === 'connecting' ? 'מתחבר…'
-    : 'שגיאת חיבור — בדוק את חוקי Firestore';
+    : 'שגיאת חיבור — בדוק את חוקי Realtime Database';
 }
 
 function isFocused(id){
   return document.activeElement && document.activeElement.id === id;
 }
 
+function cleanRoomCode(code){
+  return (code || 'default')
+    .trim()
+    .replace(/[.#$\[\]\/]/g, '-')
+    .slice(0, 80) || 'default';
+}
+
 function connectToRoom(code){
   if(metaUnsub){ metaUnsub(); metaUnsub = null; }
   if(entriesUnsub){ entriesUnsub(); entriesUnsub = null; }
+
   entries = [];
   render();
   setSyncStatus('connecting');
 
-  currentRoomRef = db.collection('rooms').doc(code);
-  currentEntriesRef = currentRoomRef.collection('entries');
+  const safeCode = cleanRoomCode(code);
+  document.getElementById('roomCode').value = safeCode;
 
-  metaUnsub = currentRoomRef.onSnapshot(doc => {
+  // Realtime Database structure:
+  // rooms/{roomCode}/meta
+  // rooms/{roomCode}/entries/{entryId}
+  currentRoomRef = db.ref(`rooms/${safeCode}/meta`);
+  currentEntriesRef = db.ref(`rooms/${safeCode}/entries`);
+
+  const metaHandler = snap => {
     setSyncStatus('connected');
-    if(!doc.exists){
+
+    if(!snap.exists()){
       currentRoomRef.set({
-        state, fps, sceneDescriptions
-      }, { merge: true }).catch(() => {});
+        state,
+        fps,
+        sceneDescriptions
+      }).catch(err => {
+        console.error(err);
+        setSyncStatus('error');
+      });
       return;
     }
-    const data = doc.data();
+
+    const data = snap.val() || {};
+
     if(data.fps !== undefined && !isFocused('fpsSelect')){
       fps = data.fps;
       document.getElementById('fpsSelect').value = String(fps);
     }
+
     if(data.sceneDescriptions){
       sceneDescriptions = data.sceneDescriptions;
     }
+
     if(data.state){
       if(!isFocused('scene')) state.scene = data.state.scene ?? state.scene;
       if(!isFocused('shot')) state.shot = data.state.shot ?? state.shot;
       if(!isFocused('take')) state.take = data.state.take ?? state.take;
       if(!isFocused('position')) state.position = data.state.position ?? state.position;
     }
+
     applyState();
     render();
-  }, err => {
-    console.error(err);
-    setSyncStatus('error');
-  });
+  };
 
-  entriesUnsub = currentEntriesRef.orderBy('createdAt', 'desc').onSnapshot(snap => {
-    entries = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    render();
-  }, err => {
+  const metaError = err => {
     console.error(err);
     setSyncStatus('error');
-  });
+  };
+
+  currentRoomRef.on('value', metaHandler, metaError);
+  metaUnsub = () => currentRoomRef.off('value', metaHandler);
+
+  const entriesQuery = currentEntriesRef.orderByChild('createdAt');
+
+  const entriesHandler = snap => {
+    const list = [];
+    snap.forEach(child => {
+      list.push({ id: child.key, ...child.val() });
+    });
+
+    // Realtime Database returns ascending order; UI expects newest first.
+    entries = list.reverse();
+    render();
+    setSyncStatus('connected');
+  };
+
+  const entriesError = err => {
+    console.error(err);
+    setSyncStatus('error');
+  };
+
+  entriesQuery.on('value', entriesHandler, entriesError);
+  entriesUnsub = () => entriesQuery.off('value', entriesHandler);
 }
 
 async function saveMeta(partial){
   if(!currentRoomRef) return;
-  try{ await currentRoomRef.set(partial, { merge: true }); }
-  catch(e){ console.error(e); showToast('שגיאת סנכרון — בדוק חיבור/חוקי Firestore'); }
+  try{
+    await currentRoomRef.update(partial);
+  }catch(e){
+    console.error(e);
+    showToast('שגיאת סנכרון — בדוק חיבור/חוקי Realtime Database');
+  }
 }
 
 function onRoomCodeChange(){
@@ -692,14 +741,15 @@ async function logTake(status){
     timecode: lastTC,
     fps: fps,
     time: new Date().toISOString(),
-    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    createdAt: firebase.database.ServerValue.TIMESTAMP
   };
 
   try{
-    await currentEntriesRef.add(entry);
+    const newEntryRef = currentEntriesRef.push();
+    await newEntryRef.set(entry);
   }catch(e){
     console.error(e);
-    showToast('שגיאה בשמירה — בדוק חיבור/חוקי Firestore');
+    showToast('שגיאה בשמירה — בדוק חיבור/חוקי Realtime Database');
     return;
   }
 
@@ -715,17 +765,18 @@ async function logTake(status){
 }
 
 async function deleteEntry(id){
-  try{ await currentEntriesRef.doc(id).delete(); }
-  catch(e){ console.error(e); showToast('שגיאה במחיקה'); }
+  try{
+    await currentEntriesRef.child(id).remove();
+  }catch(e){
+    console.error(e);
+    showToast('שגיאה במחיקה');
+  }
 }
 
 async function clearAll(){
   if(!confirm('לאפס את כל היומן? הפעולה לא הפיכה.')) return;
   try{
-    const snap = await currentEntriesRef.get();
-    const batch = db.batch();
-    snap.docs.forEach(d => batch.delete(d.ref));
-    await batch.commit();
+    await currentEntriesRef.remove();
     showToast('היומן אופס');
   }catch(e){
     console.error(e);
@@ -757,9 +808,11 @@ function getTimebaseInfo(frameRate){
 function exportPremiereXML(){
   if(entries.length === 0){ showToast('אין רשומות לייצוא'); return; }
 
-  const getSortTime = e => (e.createdAt && typeof e.createdAt.toDate === 'function')
-    ? e.createdAt.toDate().getTime()
-    : new Date(e.time).getTime();
+  const getSortTime = e => {
+    if(typeof e.createdAt === 'number') return e.createdAt;
+    if(e.createdAt && typeof e.createdAt.toDate === 'function') return e.createdAt.toDate().getTime();
+    return new Date(e.time).getTime();
+  };
 
   const sorted = [...entries].sort((a, b) => getSortTime(a) - getSortTime(b));
 
