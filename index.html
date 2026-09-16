@@ -362,11 +362,80 @@
     margin-top:3px;
   }
   .entry .star{ color: var(--star); font-size: 13px; }
+  .entry-actions{ display:flex; align-items:center; gap:6px; flex-shrink:0; }
+  .entry .edit-btn,
   .entry .del{
-    background: none; border:none; color: var(--text-faint);
-    font-size: 16px; cursor:pointer; padding: 4px 6px;
+    border:1px solid var(--line);
+    background: var(--panel-2);
+    border-radius:6px;
+    cursor:pointer;
+    padding:6px 8px;
+    font-family:var(--sans);
+    font-size:11px;
   }
-  .entry .del:hover{ color: var(--ng); }
+  .entry .edit-btn{ color:var(--tungsten); }
+  .entry .edit-btn:hover{ border-color:var(--tungsten-dim); }
+  .entry .del{ color:var(--ng); }
+  .entry .del:hover{ border-color:var(--ng-dim); }
+
+  .edit-modal{
+    position:fixed; inset:0; z-index:1000;
+    display:none; align-items:center; justify-content:center;
+    background:rgba(0,0,0,.68);
+    padding:16px;
+  }
+  .edit-modal.open{ display:flex; }
+  .edit-card{
+    width:min(520px,100%);
+    max-height:90vh; overflow:auto;
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:16px;
+    box-shadow:0 18px 60px rgba(0,0,0,.35);
+  }
+  .edit-card h3{ margin:0 0 14px; font-size:17px; }
+  .edit-grid{
+    display:grid;
+    grid-template-columns:repeat(2,1fr);
+    gap:10px;
+  }
+  .edit-field label{
+    display:block; font-size:11px; color:var(--text-dim); margin-bottom:5px;
+  }
+  .edit-field input,
+  .edit-field select{
+    width:100%;
+    background:var(--panel-2);
+    border:1px solid var(--line);
+    color:var(--text);
+    border-radius:7px;
+    padding:10px;
+    font-family:var(--sans);
+    font-size:14px;
+  }
+  .edit-field.full{ grid-column:1 / -1; }
+  .edit-check{
+    display:flex; align-items:center; gap:8px;
+    margin-top:12px; font-size:13px; color:var(--text-dim);
+  }
+  .edit-check input{ width:18px; height:18px; }
+  .edit-actions{
+    display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:16px;
+  }
+  .edit-actions button{
+    border:none; border-radius:8px; padding:12px 10px;
+    font-family:var(--sans); font-weight:700; cursor:pointer;
+  }
+  .edit-save{ background:var(--good); color:#14130f; }
+  .edit-cancel{ background:var(--panel-2); color:var(--text); border:1px solid var(--line)!important; }
+
+  @media (max-width:520px){
+    .entry{ align-items:flex-start; }
+    .entry-actions{ flex-direction:column; }
+    .entry .edit-btn,.entry .del{ width:62px; padding:7px 5px; }
+    .edit-grid{ grid-template-columns:1fr 1fr; }
+  }
 
   .empty{
     text-align:center;
@@ -493,6 +562,53 @@
   </div>
 
   <div id="log"></div>
+
+  <div class="edit-modal" id="editModal" onclick="closeEditOnBackdrop(event)">
+    <div class="edit-card">
+      <h3>עריכת רשומה</h3>
+      <div class="edit-grid">
+        <div class="edit-field">
+          <label>סצנה</label>
+          <input id="editScene" type="number" min="1">
+        </div>
+        <div class="edit-field">
+          <label>שוט</label>
+          <input id="editShot" type="number" min="1">
+        </div>
+        <div class="edit-field">
+          <label>טייק</label>
+          <input id="editTake" type="number" min="1">
+        </div>
+        <div class="edit-field">
+          <label>עמדה</label>
+          <input id="editPosition" type="text" maxlength="1">
+        </div>
+        <div class="edit-field">
+          <label>סטטוס</label>
+          <select id="editStatus">
+            <option value="good">GOOD</option>
+            <option value="ng">NG</option>
+          </select>
+        </div>
+        <div class="edit-field">
+          <label>Timecode</label>
+          <input id="editTimecode" type="text" placeholder="00:00:00:00">
+        </div>
+        <div class="edit-field full">
+          <label>הערה</label>
+          <input id="editNotes" type="text" placeholder="הערה לטייק">
+        </div>
+      </div>
+      <label class="edit-check">
+        <input id="editCircle" type="checkbox">
+        ★ טייק מצוין מאוד
+      </label>
+      <div class="edit-actions">
+        <button class="edit-save" onclick="saveEntryEdit()">שמור שינויים</button>
+        <button class="edit-cancel" onclick="closeEditModal()">ביטול</button>
+      </div>
+    </div>
+  </div>
 
   <div class="toast" id="toast"></div>
 </div>
@@ -782,9 +898,64 @@ async function logTake(status){
   showToast(status === 'good' ? `נרשם ✓ סצנה ${scene} שוט ${shot} טייק ${take} עמדה ${position}` : `נרשם NG — סצנה ${scene} שוט ${shot} טייק ${take} עמדה ${position}`);
 }
 
+let editingEntryId = null;
+
+function editEntry(id){
+  const e = entries.find(x => x.id === id);
+  if(!e) return;
+  editingEntryId = id;
+  document.getElementById('editScene').value = e.scene ?? 1;
+  document.getElementById('editShot').value = e.shot ?? 1;
+  document.getElementById('editTake').value = e.take ?? 1;
+  document.getElementById('editPosition').value = (e.position || 'A').toUpperCase().slice(0,1);
+  document.getElementById('editStatus').value = e.status === 'ng' ? 'ng' : 'good';
+  document.getElementById('editTimecode').value = e.timecode || '';
+  document.getElementById('editNotes').value = e.notes || '';
+  document.getElementById('editCircle').checked = !!e.circle;
+  document.getElementById('editModal').classList.add('open');
+}
+
+function closeEditModal(){
+  editingEntryId = null;
+  document.getElementById('editModal').classList.remove('open');
+}
+
+function closeEditOnBackdrop(ev){
+  if(ev.target && ev.target.id === 'editModal') closeEditModal();
+}
+
+async function saveEntryEdit(){
+  if(!editingEntryId) return;
+
+  const scene = Math.max(1, parseInt(document.getElementById('editScene').value || '1', 10));
+  const shot = Math.max(1, parseInt(document.getElementById('editShot').value || '1', 10));
+  const take = Math.max(1, parseInt(document.getElementById('editTake').value || '1', 10));
+  let position = document.getElementById('editPosition').value.trim().toUpperCase().replace(/[^A-Z]/g, '').slice(0,1) || 'A';
+  const status = document.getElementById('editStatus').value === 'ng' ? 'ng' : 'good';
+  const timecode = document.getElementById('editTimecode').value.trim();
+  const notes = document.getElementById('editNotes').value.trim();
+  const circle = document.getElementById('editCircle').checked;
+
+  try{
+    await currentEntriesRef.child(editingEntryId).update({
+      scene, shot, take, position, status, timecode, notes, circle,
+      editedAt: firebase.database.ServerValue.TIMESTAMP
+    });
+    closeEditModal();
+    showToast('השינויים נשמרו ✓');
+  }catch(e){
+    console.error(e);
+    showToast('שגיאה בשמירת העריכה');
+  }
+}
+
 async function deleteEntry(id){
+  const e = entries.find(x => x.id === id);
+  const label = e ? `סצנה ${e.scene} שוט ${e.shot} טייק ${e.take}` : 'הרשומה';
+  if(!confirm(`למחוק את ${label}?`)) return;
   try{
     await currentEntriesRef.child(id).remove();
+    showToast('הרשומה נמחקה');
   }catch(e){
     console.error(e);
     showToast('שגיאה במחיקה');
@@ -979,7 +1150,10 @@ function render(){
             <div class="meta">${e.timecode ? 'TC ' + e.timecode : new Date(e.time).toLocaleTimeString('he-IL', {hour:'2-digit', minute:'2-digit'})}</div>
           </div>
           ${e.circle ? '<span class="star">★</span>' : ''}
-          <button class="del" onclick="deleteEntry('${e.id}')" title="מחיקה">✕</button>
+          <div class="entry-actions">
+            <button class="edit-btn" onclick="editEntry('${e.id}')" title="עריכה">עריכה</button>
+            <button class="del" onclick="deleteEntry('${e.id}')" title="מחיקה">מחיקה</button>
+          </div>
         </div>
       `).join('')}
     </div>
